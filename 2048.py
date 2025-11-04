@@ -6,7 +6,7 @@ from enum import Enum
 import pygame
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="[%(levelname)s]: %(message)s",
 )
 
@@ -16,6 +16,30 @@ class Direction(Enum):
     DOWN = 1
     LEFT = 2
     RIGHT = 3
+
+
+COLOR = [
+    (237, 229, 218),  # 2
+    (238, 225, 201),  # 4
+    (243, 178, 122),  # 8
+    (246, 150, 101),  # 16
+    (247, 124, 95),  # 32
+    (247, 95, 59),  # 64
+    (237, 208, 115),  # 128
+    (237, 204, 99),  # 256
+    (236, 202, 80),  # 512
+    (239, 197, 63),  # 1024
+    (239, 193, 47),  # 2048
+    (255, 187, 34),  # 4096
+    (255, 170, 0),  # 8192
+    (255, 145, 0),  # 16384
+    (255, 120, 0),  # 32768
+    (204, 102, 255),  # 65536
+    (170, 51, 255),  # 131072
+    (140, 20, 255),  # 262144
+    (115, 0, 230),  # 524288
+    (90, 0, 200),  # 1048576
+]
 
 
 class Game_2048:
@@ -40,8 +64,11 @@ class Game_2048:
             self.window = pygame.display.set_mode((self.width, self.height))
             pygame.display.set_caption("2048 Game")
             self.font = pygame.font.SysFont("comicsans", 60, bold=True)
-            self.move_vel = 20
+            self.update_tiles(state)
+            pygame.display.update()
 
+        def update_tiles(self, state):
+            tiles = []
             self.window.fill(self.background_color)
             for row in range(1, self.rows):
                 y = row * self.rect_height + self.outline_thickness // 2 - 1
@@ -67,11 +94,6 @@ class Game_2048:
                 (0, 0, self.width, self.height),
                 self.outline_thickness,
             )
-            self.update_tiles(state)
-            pygame.display.update()
-
-        def update_tiles(self, state):
-            tiles = []
             for row in range(self.rows):
                 for col in range(self.cols):
                     value = state[row][col]
@@ -93,29 +115,6 @@ class Game_2048:
             pygame.display.update()
 
         class Tile:
-            COLOR = [
-                (237, 229, 218),  # 2
-                (238, 225, 201),  # 4
-                (243, 178, 122),  # 8
-                (246, 150, 101),  # 16
-                (247, 124, 95),  # 32
-                (247, 95, 59),  # 64
-                (237, 208, 115),  # 128
-                (237, 204, 99),  # 256
-                (236, 202, 80),  # 512
-                (239, 197, 63),  # 1024
-                (239, 193, 47),  # 2048
-                (255, 187, 34),  # 4096
-                (255, 170, 0),  # 8192
-                (255, 145, 0),  # 16384
-                (255, 120, 0),  # 32768
-                (204, 102, 255),  # 65536
-                (170, 51, 255),  # 131072
-                (140, 20, 255),  # 262144
-                (115, 0, 230),  # 524288
-                (90, 0, 200),  # 1048576
-            ]
-
             def __init__(
                 self,
                 value,
@@ -140,7 +139,7 @@ class Game_2048:
 
             def get_color(self):
                 color_index = int(math.log2(self.value)) - 1
-                color = self.COLOR[color_index]
+                color = COLOR[color_index]
                 return color
 
             def draw(self, window):
@@ -193,20 +192,76 @@ class Game_2048:
         state[r][c] = 2 if random.random() < 0.9 else 4
         return tuple(tuple(row) for row in state)
 
+    def can_move(self):
+        s = self.state
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if s[r][c] == 0:
+                    return True
+                # check right neighbor
+                if c + 1 < self.cols and s[r][c] == s[r][c + 1]:
+                    return True
+                # check down neighbor
+                if r + 1 < self.rows and s[r][c] == s[r + 1][c]:
+                    return True
+        return False
+
+    def move_line_left(self, line):
+        original = list(line)
+        tiles = [v for v in original if v != 0]
+        merged = []
+        i = 0
+        while i < len(tiles):
+            if i + 1 < len(tiles) and tiles[i] == tiles[i + 1]:
+                merged.append(tiles[i] * 2)
+                i += 2
+            else:
+                merged.append(tiles[i])
+                i += 1
+        merged += [0] * (len(original) - len(merged))
+        moved = merged != original
+        return merged, moved
+
     def next_state(self, direction):
         logging.debug(f"Moving tiles {direction}")
-        if direction == Direction.UP:
-            pass
-
-
-
-        next_state = self.generate_tile()
-        if next_state == self.state:
-            logging.info("game over")
-            return False
+        state = [list(row) for row in self.state]
+        moved_any = False
+        if direction == Direction.LEFT:
+            for r in range(self.rows):
+                new_row, moved = self.move_line_left(state[r])
+                state[r] = new_row
+                moved_any = moved_any or moved
+        elif direction == Direction.RIGHT:
+            for r in range(self.rows):
+                rev = state[r][::-1]
+                new_rev, moved = self.move_line_left(rev)
+                state[r] = new_rev[::-1]
+                moved_any = moved_any or moved
+        elif direction == Direction.UP:
+            for c in range(self.cols):
+                col = [state[r][c] for r in range(self.rows)]
+                new_col, moved = self.move_line_left(col)
+                for r in range(self.rows):
+                    state[r][c] = new_col[r]
+                moved_any = moved_any or moved
+        elif direction == Direction.DOWN:
+            for c in range(self.cols):
+                col = [state[r][c] for r in range(self.rows)][::-1]
+                new_rev_col, moved = self.move_line_left(col)
+                new_col = new_rev_col[::-1]
+                for r in range(self.rows):
+                    state[r][c] = new_col[r]
+                moved_any = moved_any or moved
         else:
-            self.state = next_state
             return True
+        if not moved_any:
+            if not self.can_move():
+                logging.info("game over")
+                return False
+            return True
+        self.state = tuple(tuple(row) for row in state)
+        self.state = self.generate_tile()
+        return True
 
 
 if __name__ == "__main__":
@@ -216,8 +271,8 @@ if __name__ == "__main__":
     while run:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                run = False
-                break
+                pygame.quit()
+                exit()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
                     run = game.next_state(Direction.UP)
@@ -228,4 +283,12 @@ if __name__ == "__main__":
                 elif event.key == pygame.K_LEFT:
                     run = game.next_state(Direction.LEFT)
                 game.graphics.update_tiles(game.state)
-    pygame.quit()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    pygame.quit()
+                    exit()
