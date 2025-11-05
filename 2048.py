@@ -50,12 +50,12 @@ class Game_2048:
             self.outline_thickness = 10
             self.rect_width = 100
             self.rect_height = 100
-            self.width = (
-                self.rect_width + self.outline_thickness
-            ) * cols - (cols - 1) * self.outline_thickness
-            self.height = (
-                self.rect_height + self.outline_thickness
-            ) * rows - (rows - 1) * self.outline_thickness
+            self.width = (self.rect_width + self.outline_thickness) * cols - (
+                cols - 1
+            ) * self.outline_thickness
+            self.height = (self.rect_height + self.outline_thickness) * rows - (
+                rows - 1
+            ) * self.outline_thickness
             self.outline_color = (187, 173, 160)
             self.background_color = (205, 192, 180)
             self.font_color = (119, 110, 101)
@@ -138,7 +138,7 @@ class Game_2048:
                 self.border = outline_thickness
 
             def get_color(self):
-                color_index = int(math.log2(self.value)) - 1
+                color_index = self.value - 1
                 color = COLOR[color_index]
                 return color
 
@@ -154,7 +154,7 @@ class Game_2048:
                         self.rect_height - self.border,
                     ),
                 )
-                text = self.font.render(str(self.value), 1, self.font_color)
+                text = self.font.render(str(2**self.value), 1, self.font_color)
                 window.blit(
                     text,
                     (
@@ -189,7 +189,7 @@ class Game_2048:
             return tuple(tuple(row) for row in state)
         logging.debug(f"Empty positions: {empty_positions}")
         r, c = random.choice(empty_positions)
-        state[r][c] = 2 if random.random() < 0.9 else 4
+        state[r][c] = 1 if random.random() < 0.9 else 2
         return tuple(tuple(row) for row in state)
 
     def can_move(self):
@@ -206,14 +206,14 @@ class Game_2048:
                     return True
         return False
 
-    def move_line_left(self, line):
+    def merge_tiles_left(self, line):
         original = list(line)
         tiles = [v for v in original if v != 0]
         merged = []
         i = 0
         while i < len(tiles):
             if i + 1 < len(tiles) and tiles[i] == tiles[i + 1]:
-                merged.append(tiles[i] * 2)
+                merged.append(tiles[i] + 1)
                 i += 2
             else:
                 merged.append(tiles[i])
@@ -228,26 +228,26 @@ class Game_2048:
         moved_any = False
         if direction == Direction.LEFT:
             for r in range(self.rows):
-                new_row, moved = self.move_line_left(state[r])
+                new_row, moved = self.merge_tiles_left(state[r])
                 state[r] = new_row
                 moved_any = moved_any or moved
         elif direction == Direction.RIGHT:
             for r in range(self.rows):
                 rev = state[r][::-1]
-                new_rev, moved = self.move_line_left(rev)
+                new_rev, moved = self.merge_tiles_left(rev)
                 state[r] = new_rev[::-1]
                 moved_any = moved_any or moved
         elif direction == Direction.UP:
             for c in range(self.cols):
                 col = [state[r][c] for r in range(self.rows)]
-                new_col, moved = self.move_line_left(col)
+                new_col, moved = self.merge_tiles_left(col)
                 for r in range(self.rows):
                     state[r][c] = new_col[r]
                 moved_any = moved_any or moved
         elif direction == Direction.DOWN:
             for c in range(self.cols):
                 col = [state[r][c] for r in range(self.rows)][::-1]
-                new_rev_col, moved = self.move_line_left(col)
+                new_rev_col, moved = self.merge_tiles_left(col)
                 new_col = new_rev_col[::-1]
                 for r in range(self.rows):
                     state[r][c] = new_col[r]
