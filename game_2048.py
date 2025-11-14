@@ -218,21 +218,21 @@ class Game_2048:
     def next_state(self, direction):
         logging.debug(f"Moving tiles {direction}")
         state = [list(row) for row in self.state]
-        new_tiles = []
+        new_merged_tiles = []
         moved_any = False
         if direction == Direction.LEFT:
             for r in range(self.rows):
                 new_row, moved, new_tile = self.merge_tiles_left(state[r])
                 state[r] = new_row
                 moved_any = moved_any or moved
-                new_tiles.extend(new_tile)
+                new_merged_tiles.extend(new_tile)
         elif direction == Direction.RIGHT:
             for r in range(self.rows):
                 rev = state[r][::-1]
                 new_rev, moved, new_tile = self.merge_tiles_left(rev)
                 state[r] = new_rev[::-1]
                 moved_any = moved_any or moved
-                new_tiles.extend(new_tile)
+                new_merged_tiles.extend(new_tile)
         elif direction == Direction.UP:
             for c in range(self.cols):
                 col = [state[r][c] for r in range(self.rows)]
@@ -240,7 +240,7 @@ class Game_2048:
                 for r in range(self.rows):
                     state[r][c] = new_col[r]
                 moved_any = moved_any or moved
-                new_tiles.extend(new_tile)
+                new_merged_tiles.extend(new_tile)
         elif direction == Direction.DOWN:
             for c in range(self.cols):
                 col = [state[r][c] for r in range(self.rows)][::-1]
@@ -249,16 +249,16 @@ class Game_2048:
                 for r in range(self.rows):
                     state[r][c] = new_col[r]
                 moved_any = moved_any or moved
-                new_tiles.extend(new_tile)
+                new_merged_tiles.extend(new_tile)
         else:
-            return True, self.state, new_tiles
+            return True, self.state, new_merged_tiles
         if not moved_any:
             if not self.can_move():
-                return False, self.state, new_tiles
-            return True, self.state, new_tiles
+                return False, self.state, new_merged_tiles
+            return True, self.state, new_merged_tiles
         self.state = tuple(tuple(row) for row in state)
         self.state = self.generate_tile()
-        return True, self.state, new_tiles
+        return True, self.state, new_merged_tiles
 
     def get_state(self):
         return self.state

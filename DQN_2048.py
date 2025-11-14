@@ -9,6 +9,8 @@ from game_2048 import Game_2048, Direction
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+from stable_baselines3.common.callbacks import BaseCallback
+import matplotlib.pyplot as plt
 
 
 class game_2048_env(gym.Env):
@@ -54,23 +56,26 @@ class game_2048_env(gym.Env):
 
         highest_tile = np.max(obs)
         for tile in new_merged_tiles:
+            if tile == 11:
+                reward += 100
+            elif tile == 10:
+                reward += 50
+            elif tile == 9:
+                reward += 20
             reward += tile
         empty_cells = np.sum(obs == 0)
         reward += empty_cells * 0.1
         
         if action == 2 or action == 1:
             reward *= 1.5
-        elif action == 3:
-            reward *= 1.1
-        else:
-            reward *= 0.9
         # if left down tile is max value, give more reward
         if obs[0, self.rows-1, 0] == highest_tile:
-            reward *= (highest_tile * 0.3) if (highest_tile * 0.3) > 1.6 else 1.6
+            reward *= 1.5
         
         if obs.all() == self.last_obs.all():
-            reward -= 0.2*highest_tile
+            reward -= 1
         self.last_obs = obs
+        reward /= 10.0
             
         # if highest_tile > self.highest_tile:
         #     reward = 2**highest_tile
@@ -162,6 +167,21 @@ policy_kwargs = dict(
     features_extractor_kwargs=dict(features_dim=128),
 )
 
+class RewardLossCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super().__init__(verbose)
+        self.rewards = []
+        self.losses = []
+
+    def _on_step(self) -> bool:
+        # reward: episode reward
+        if len(self.locals["infos"]) > 0:
+            info = self.locals["infos"][0]
+            if "episode" in info:
+                ep_reward = info["episode"]["r"]
+                self.rewards.append(ep_reward)
+        return True
+
 def train_and_save_model():
     env = game_2048_env(4, 4)
     env = StepLimitWrapper(env, max_steps=1000)
@@ -170,17 +190,27 @@ def train_and_save_model():
         env,
         verbose=1,
         policy_kwargs=policy_kwargs,
-        learning_rate=1e-3,
-        exploration_final_eps=0.05,
+        learning_rate=3e-4,
+        exploration_final_eps=0.005,
         exploration_fraction=0.998,
         exploration_initial_eps=0.9,
         buffer_size=500000,
         batch_size=128,
-        gamma=0.99,
+        gamma=0.9,
         learning_starts=1000,
+        target_update_interval=200
     )
-    model.learn(total_timesteps=100_000, log_interval=4)
+    callback = RewardLossCallback()
+    model.learn(total_timesteps=1_500_000, log_interval=4, callback=callback)
     model.save("dqn_2048_model")
+    
+    plt.figure(figsize=(7,4))
+    plt.plot(callback.rewards)
+    plt.xlabel("Episodes")
+    plt.ylabel("Reward")
+    plt.title("Average Reward per Episode")
+    plt.grid()
+    plt.show()
     
 def evaluate_model():
     direction = [
@@ -207,7 +237,7 @@ def evaluate_model():
 
         step += 1
         print(f"Step: {step}, Action: {direction[action]}, Reward: {reward}")
-        time.sleep(0.2)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
