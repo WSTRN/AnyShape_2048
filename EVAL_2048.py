@@ -1,4 +1,5 @@
 import time
+import pygame
 from game_2048 import Game_2048, Direction
 from DQN_2048 import game_2048_env
 from stable_baselines3 import DQN
@@ -18,6 +19,10 @@ def evaluate_model():
         action, _ = model.predict(obs, deterministic=False)
         obs, reward, terminated, _, _ = env.step(action)
         env.render()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
 
         if terminated:
             print("Game Over!")
