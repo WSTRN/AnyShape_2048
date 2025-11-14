@@ -1,4 +1,3 @@
-from curses import window
 import time
 from stable_baselines3 import DQN
 from stable_baselines3.dqn.policies import DQNPolicy
@@ -12,6 +11,7 @@ from gymnasium import spaces
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 import matplotlib.pyplot as plt
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 
 class game_2048_env(gym.Env):
@@ -186,9 +186,12 @@ class RewardLossCallback(BaseCallback):
 def train_and_save_model():
     env = game_2048_env(4, 4)
     env = StepLimitWrapper(env, max_steps=1000)
+    def make_env():
+        return StepLimitWrapper(game_2048_env(4,4), max_steps=1000)
+    vec_env = DummyVecEnv([make_env for _ in range(8)])
     model = DQN(
         DuelingDQNPolicy,
-        env,
+        vec_env,
         verbose=1,
         device="cuda",
         policy_kwargs=policy_kwargs,
