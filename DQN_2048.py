@@ -189,6 +189,7 @@ def train_and_save_model():
         DuelingDQNPolicy,
         env,
         verbose=1,
+        device="cuda",
         policy_kwargs=policy_kwargs,
         learning_rate=3e-4,
         exploration_final_eps=0.005,
