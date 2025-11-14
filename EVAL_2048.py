@@ -11,7 +11,7 @@ def evaluate_model():
             Direction.RIGHT,
         ]
     env = game_2048_env(4, 4, render=True)
-    model = DQN.load("dqn_2048_model")
+    model = DQN.load("dqn_2048_model/best_model")
     obs, _ = env.reset()
     step = 0
     while True:

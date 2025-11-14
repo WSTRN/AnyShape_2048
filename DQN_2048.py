@@ -13,6 +13,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 import matplotlib.pyplot as plt
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import EvalCallback, CallbackList
 
 
 class game_2048_env(gym.Env):
@@ -194,6 +195,7 @@ def train_and_save_model():
             return env
         return _init
     vec_env = DummyVecEnv([make_env(i) for i in range(8)])
+    eval_env = Monitor(StepLimitWrapper(game_2048_env(4, 4), max_steps=1000))
 
     model = DQN(
         DuelingDQNPolicy,
@@ -211,14 +213,23 @@ def train_and_save_model():
         learning_starts=1000,
         target_update_interval=200
     )
-    callback = RewardLossCallback()
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path="dqn_2048_model",
+        log_path="./logs/",
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
+    reward_callback = RewardLossCallback()
+    callback = CallbackList([eval_callback, reward_callback])
     model.learn(total_timesteps=1_500_000, log_interval=4, callback=callback)
-    model.save("dqn_2048_model")
+    # model.save("dqn_2048_model")
     
     def moving_average(x, window=20):
         return np.convolve(x, np.ones(window)/window, mode='valid')
 
-    smoothed_rewards = moving_average(callback.rewards, window=20)
+    smoothed_rewards = moving_average(reward_callback.rewards, window=20)
     plt.figure(figsize=(7,4))
     plt.plot(smoothed_rewards)
     plt.xlabel("Episodes")
