@@ -1,0 +1,217 @@
+import time
+from stable_baselines3 import DQN
+from stable_baselines3.dqn.policies import DQNPolicy
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from game_2048 import Game_2048, Direction
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+
+
+class game_2048_env(gym.Env):
+    def __init__(self, rows=4, cols=4, render=False):
+        super(game_2048_env, self).__init__()
+        self.rows = rows
+        self.cols = cols
+        self.render_enabled = render
+        self.game = Game_2048(rows, cols, graphics=render)
+        self.action_space = spaces.Discrete(4)
+        self.observation_space = spaces.Box(
+            low=0,
+            high=12,
+            shape=(1, rows, cols),
+            dtype=np.float32,
+        )
+        self.last_obs = None
+
+    def _to_obs(self, obs):
+        return np.array(obs, dtype=np.float32).reshape(1, self.rows, self.cols)
+
+    def reset(self, seed=None, options=None):
+        self.highest_tile = 0
+        self.score = 0
+        super().reset(seed=seed, options=options)
+        obs = self.game.reset()
+        obs = self._to_obs(obs)
+        self.last_obs = obs
+        info = {}
+        return obs, info
+
+    def step(self, action):
+        direction = [
+            Direction.UP,
+            Direction.DOWN,
+            Direction.LEFT,
+            Direction.RIGHT,
+        ][action]
+
+        alive, obs, new_merged_tiles = self.game.next_state(direction)
+        obs = self._to_obs(obs)
+        reward = 0
+
+        highest_tile = np.max(obs)
+        for tile in new_merged_tiles:
+            reward += tile
+        empty_cells = np.sum(obs == 0)
+        reward += empty_cells * 0.1
+        
+        if action == 2 or action == 1:
+            reward *= 1.5
+        elif action == 3:
+            reward *= 1.1
+        else:
+            reward *= 0.9
+        # if left down tile is max value, give more reward
+        if obs[0, self.rows-1, 0] == highest_tile:
+            reward *= (highest_tile * 0.3) if (highest_tile * 0.3) > 1.6 else 1.6
+        
+        if obs.all() == self.last_obs.all():
+            reward -= 0.2*highest_tile
+        self.last_obs = obs
+            
+        # if highest_tile > self.highest_tile:
+        #     reward = 2**highest_tile
+        #     self.highest_tile = highest_tile
+        # elif score > self.score:
+        #     self.score = score
+        #     reward = 1
+        # else:
+        #     reward = -1
+
+        terminated = not alive
+        truncated = False
+        info = {}
+        return obs, reward, terminated, truncated, info
+    
+    def render(self):
+        if self.render_enabled:
+            self.game.graphics.update_tiles(self.game.get_state())
+            
+class StepLimitWrapper(gym.Wrapper):
+    def __init__(self, env, max_steps):
+        super(StepLimitWrapper, self).__init__(env)
+        self.max_steps = max_steps
+        self.current_step = 0
+
+    def reset(self, **kwargs):
+        self.current_step = 0
+        return self.env.reset(**kwargs)
+    
+    def step(self, action):
+        self.current_step += 1
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        if self.current_step >= self.max_steps:
+            truncated = True
+        return obs, reward, terminated, truncated, info
+
+class DuelingQNetwork(nn.Module):
+    def __init__(self, features_dim, action_dim):
+        super(DuelingQNetwork, self).__init__()
+        self.fc = nn.Linear(features_dim, 128)
+        # Dueling heads
+        self.value = nn.Linear(128, 1)
+        self.advantage = nn.Linear(128, action_dim)
+
+    def forward(self, x):
+        x = F.relu(self.fc(x))
+        value = self.value(x)
+        adv = self.advantage(x)
+        # combine value & advantage
+        q = value + (adv - adv.mean(dim=1, keepdim=True))
+        return q
+    
+class DuelingDQNPolicy(DQNPolicy):
+    def _build_q_net(self):
+        features_dim = self.features_extractor.features_dim
+        action_dim = self.action_space.n
+        self.q_net = DuelingQNetwork(features_dim, action_dim)
+
+class MyCNN_MLP_Extractor(BaseFeaturesExtractor):
+    def __init__(self, observation_space: gym.spaces.Box, features_dim=128):
+        super(MyCNN_MLP_Extractor, self).__init__(observation_space, features_dim)
+        self.conv1 = nn.Conv2d(1, 12, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(12, 24, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(24, 36, kernel_size=3, padding=1)
+        # compute output size automatically
+        with torch.no_grad():
+            sample = torch.zeros(1, *observation_space.shape)
+            sample = F.relu(self.conv1(sample))
+            sample = F.relu(self.conv2(sample))
+            sample = F.relu(self.conv3(sample))
+            n_flatten = sample.numel()
+
+        self.fc1 = nn.Linear(n_flatten, 128)
+        self.fc2 = nn.Linear(128, features_dim)
+        self._features_dim = features_dim
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+
+        return x
+
+policy_kwargs = dict(
+    features_extractor_class=MyCNN_MLP_Extractor,
+    features_extractor_kwargs=dict(features_dim=128),
+)
+
+def train_and_save_model():
+    env = game_2048_env(4, 4)
+    env = StepLimitWrapper(env, max_steps=1000)
+    model = DQN(
+        DuelingDQNPolicy,
+        env,
+        verbose=1,
+        policy_kwargs=policy_kwargs,
+        learning_rate=1e-3,
+        exploration_final_eps=0.05,
+        exploration_fraction=0.998,
+        exploration_initial_eps=0.9,
+        buffer_size=500000,
+        batch_size=128,
+        gamma=0.99,
+        learning_starts=1000,
+    )
+    model.learn(total_timesteps=100_000, log_interval=4)
+    model.save("dqn_2048_model")
+    
+def evaluate_model():
+    direction = [
+            Direction.UP,
+            Direction.DOWN,
+            Direction.LEFT,
+            Direction.RIGHT,
+        ]
+    env = game_2048_env(4, 4, render=True)
+    model = DQN.load("dqn_2048_model")
+    obs, _ = env.reset()
+    step = 0
+    while True:
+        action, _ = model.predict(obs, deterministic=False)
+        obs, reward, terminated, _, _ = env.step(action)
+        env.render()
+
+        if terminated:
+            print("Game Over!")
+            obs, _ = env.reset()
+            step = 0
+            continue
+
+
+        step += 1
+        print(f"Step: {step}, Action: {direction[action]}, Reward: {reward}")
+        time.sleep(0.2)
+
+
+if __name__ == "__main__":
+    train_and_save_model()
+    evaluate_model()
+
+
