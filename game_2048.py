@@ -167,7 +167,7 @@ class Game_2048:
         self.cols = cols
         self.state = tuple(tuple(0 for _ in range(self.cols)) for _ in range(self.rows))
         self.state = self.generate_tile()
-        logging.debug(f"Initial game state: {self.state}")
+        logging.debug(f"Initial game state:\n" + "\n".join(f"{row}" for row in self.state))
 
         if graphics:
             self.graphics = self.Graphics(self.rows, self.cols, self.state)
@@ -259,6 +259,7 @@ class Game_2048:
             return True, self.state, new_merged_tiles
         self.state = tuple(tuple(row) for row in state)
         self.state = self.generate_tile()
+        logging.debug(f"Game state:\n" + "\n".join(f"{row}" for row in self.state))
         return True, self.state, new_merged_tiles
 
     def get_state(self):
