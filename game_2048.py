@@ -307,3 +307,4 @@ if __name__ == "__main__":
                 if event.key == pygame.K_SPACE:
                     pygame.quit()
                     exit()
+        game.graphics.clock.tick(game.graphics.fps)
